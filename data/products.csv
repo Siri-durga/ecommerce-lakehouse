@@ -1,0 +1,11 @@
+product_id,product_name,category,price,stock_quantity
+1,iPhone 14,Electronics,799.99,50
+2,MacBook Air,Electronics,1199.99,30
+3,AirPods Pro,Electronics,249.99,100
+4,Office Chair,Furniture,199.99,40
+5,Wooden Desk,Furniture,349.99,20
+6,Running Shoes,Clothing,89.99,150
+7,Jeans,Clothing,59.99,200
+8,Coffee Maker,Home,129.99,60
+9,Blender,Home,99.99,80
+10,Notebook,Stationery,4.99,500

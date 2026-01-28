@@ -1,0 +1,6 @@
+customer_id,name,email,last_updated_date
+1,Alice,alice@example.com,2025-01-01
+2,Bob,bob@example.com,2025-01-01
+3,Charlie,charlie@example.com,2025-01-01
+4,David,david@example.com,2025-01-01
+5,Eva,eva@example.com,2025-01-01
