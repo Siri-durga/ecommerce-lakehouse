@@ -44,9 +44,10 @@ if bucket_name not in [b["Name"] for b in s3.list_buckets()["Buckets"]]:
 s3.upload_file("/data/products.csv", bucket_name, "raw/products.csv")
 s3.upload_file("/data/customers.csv", bucket_name, "raw/customers.csv")
 s3.upload_file("/data/updates.csv", bucket_name, "raw/updates.csv")
+s3.upload_file("/data/sales.csv", bucket_name, "raw/sales.csv")
 
 # -------------------------
-# PRODUCTS → DELTA (Batch)
+# PRODUCTS → DELTA
 # -------------------------
 products_schema = StructType([
     StructField("product_id", IntegerType(), False),
@@ -74,7 +75,7 @@ products_path = "s3a://data/warehouse/products"
 )
 
 # -------------------------
-# CUSTOMERS → INITIAL LOAD
+# CUSTOMERS → DELTA + MERGE
 # -------------------------
 customers_schema = StructType([
     StructField("customer_id", IntegerType(), False),
@@ -94,9 +95,6 @@ customers_path = "s3a://data/warehouse/customers"
 
 customers_df.write.format("delta").mode("overwrite").save(customers_path)
 
-# -------------------------
-# UPDATES → MERGE (UPSERT)
-# -------------------------
 updates_df = (
     spark.read
     .schema(customers_schema)
@@ -126,40 +124,36 @@ customers_delta = DeltaTable.forPath(spark, customers_path)
 )
 
 # -------------------------
-# TIME TRAVEL VERIFICATION
+# SALES → STRUCTURED STREAMING
 # -------------------------
-print("===== CURRENT VERSION (AFTER MERGE) =====")
-spark.read.format("delta") \
-    .load(customers_path) \
-    .filter("customer_id = 5") \
-    .select("customer_id", "email") \
-    .show(truncate=False)
+sales_schema = StructType([
+    StructField("sale_id", IntegerType(), False),
+    StructField("product_id", IntegerType(), False),
+    StructField("customer_id", IntegerType(), False),
+    StructField("quantity", IntegerType(), False),
+    StructField("sale_amount", DoubleType(), False),
+    StructField("sale_timestamp", StringType(), False),
+])
 
-print("===== VERSION 0 (BEFORE MERGE) =====")
-spark.read.format("delta") \
-    .option("versionAsOf", 0) \
-    .load(customers_path) \
-    .filter("customer_id = 5") \
-    .select("customer_id", "email") \
-    .show(truncate=False)
+sales_path = "s3a://data/warehouse/sales"
+checkpoint_path = "s3a://data/checkpoints/sales_stream"
 
-# -------------------------
-# OPTIMIZE PRODUCTS (ZORDER)
-# -------------------------
-spark.sql(f"""
-OPTIMIZE delta.`{products_path}`
-ZORDER BY (product_id)
-""")
-
-# -------------------------
-# VACUUM CUSTOMERS
-# -------------------------
-spark.conf.set(
-    "spark.databricks.delta.retentionDurationCheck.enabled", "false"
+sales_stream_df = (
+    spark.readStream
+    .schema(sales_schema)
+    .option("header", "true")
+    .option("maxFilesPerTrigger", 1)
+    .csv("s3a://data/raw/sales/")
 )
 
-spark.sql(f"""
-VACUUM delta.`{customers_path}` RETAIN 0 HOURS
-""")
+sales_query = (
+    sales_stream_df.writeStream
+    .format("delta")
+    .outputMode("append")
+    .option("checkpointLocation", checkpoint_path)
+    .start(sales_path)
+)
+
+sales_query.awaitTermination()
 
 spark.stop()
